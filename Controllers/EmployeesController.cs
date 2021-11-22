@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using EmployeesCh12.Data;
 using EmployeesCh12.Models;
-
+using EmployeesCh12.ViewModel;
 namespace EmployeesCh12.Controllers
 {
     public class EmployeesController : Controller
@@ -19,13 +19,67 @@ namespace EmployeesCh12.Controllers
             _context = context;
         }
 
-        // GET: Employees
-        public async Task<IActionResult> Index()
+        public IActionResult DeptCount()
         {
-            var employeeContext = _context.Employees.Include(e => e.Department);
-            return View(await employeeContext.ToListAsync());
+            IQueryable<DepartmentGroup> data =
+                 from employee in _context.Employees.Include(e => e.Department)
+                 group employee by employee.DepartmentID into deptGroup
+                 select new DepartmentGroup()
+                 {
+                     DepartmentID = deptGroup.Key,
+                     DepartmentCount = deptGroup.Count()
+                 };
+            return View(data.ToList());
         }
 
+        // GET: Employees
+        /* public async Task<IActionResult> Index()
+         {
+             var employeeContext = _context.Employees.Include(e => e.Department);
+             return View(await employeeContext.ToListAsync());
+         }
+        */
+        public async Task<IActionResult> Index(string sortOrder, string currentFilter, string searchString, int? pageNumber)
+        {
+            ViewData["CurrentSort"] = sortOrder;
+            ViewData["NameSortParm"] = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+            ViewData["DateSortParm"] = sortOrder == "Date" ? "date_desc" : "Date";
+
+            if (searchString != null)
+            {
+                pageNumber = 1;
+            }
+            else
+            {
+                searchString = currentFilter;
+            }
+            ViewData["CurrentFilter"] = searchString;
+
+            var employees = from e in _context.Employees.Include(e => e.Department).Include(e => e.Benefits)
+                            select e;
+            if (!String.IsNullOrEmpty(searchString))
+            {
+                employees = employees.Where(s => s.LastName.Contains(searchString)
+                                        || s.FirstName.Contains(searchString));
+            }
+            switch (sortOrder)
+            {
+                case "name_desc":
+                    employees = employees.OrderByDescending(s => s.LastName);
+                    break;
+                case "Date":
+                    employees = employees.OrderBy(s => s.HireDate);
+                    break;
+                case "date_desc":
+                    employees = employees.OrderByDescending(s => s.HireDate);
+                    break;
+                default:
+                    employees = employees.OrderBy(s => s.LastName);
+                    break;
+            }
+            int pageSize = 3;
+            return View(await PaginatedList<Employee>.CreateAsync(employees.AsNoTracking(), pageNumber ?? 1, pageSize));
+        }
         // GET: Employees/Details/5
         public async Task<IActionResult> Details(int? id)
         {
